@@ -2,8 +2,6 @@ const fs = require('fs');
 const readline = require('readline');
 
 
-
-
 const readFileFromLine = (path, callback) => {
   var fRead = fs.createReadStream(path);
   var objReadline = readline.createInterface({
