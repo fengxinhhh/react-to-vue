@@ -2,8 +2,9 @@ const fs = require('fs');
 const path = require('path');
 const { readFileFromLine } = require('./write');
 const { Stack } = require('./stack');
+const { computeFileLines } = require('./_utils/computeFileLines')
 
-const { formatStateInTemplate, saveCodeInUseEffect, saveCodeInUnmounted, saveState } = require('./compile');
+const { formatStateInTemplate, saveCodeInUseEffect, saveCodeInUnmounted, formatWatchToVue, saveState } = require('./compile');
 
 const transformOptions = {
   sourcePath: path.resolve(__dirname, 'sourceFile', 'index.jsx'),
@@ -19,7 +20,7 @@ const vueScriptList = [];                 //vue script内容
 let fsContent = [];                       //react源文件
 let compileStack = new Stack();              //以栈顶值作为优先级最高的编译任务调度，1 -> 常规编译 ，2 -> 副作用函数编译中， 3 -> 模板编译中， 4 -> 引用数据类型状态编译中， 5 -> 组件销毁生命周期
 compileStack.unshift(1);
-let reactFileHasStateType = [];         //1为基本数据类型ref，2为引用数据类型reactive，3为mounted，5为unmounted
+let reactFileHasStateType = [];         //1为基本数据类型ref，2为引用数据类型reactive，3为mounted，4为watch，5为unmounted
 let allStateList = new Map();                  //所有状态的列表
 let resultFileTotalLine = 0;              //结果文件总行数
 let mountedContainer = "";              //mounted临时容器
@@ -30,7 +31,9 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
   fsContent = res;
   fsContent = fsContent.filter(line => line !== "");
   fsContent.forEach(lineItem => {
-    lineItem = lineItem.replace(/\s*/g, "");
+    if (compileStack.peek() !== 3) {
+      lineItem = lineItem.replace(/\s*/g, "");
+    }
 
     if (compileStack.peek() === 1) {               //常规编译，捕捉当前行是否为特殊编译
       if (lineItem === 'return(') {        //开始输出模板
@@ -51,14 +54,17 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
       else if (lineItem.startsWith('useEffect')) {             //副作用函数
         compileStack.unshift(2);
       }
+      else {
+        //被舍弃的，跳过循环，不做编译，一些特殊react专属语法，如export default function Index()/import './index.module.less';
+      }
     }
     else if (compileStack.peek() === 2) {          //副作用函数编译中
       const saveCodeResult = saveCodeInUseEffect(allStateList, lineItem, compileStack)
       if (saveCodeResult.action === 'unmounted') {        //调度到unmounted
         compileStack = saveCodeResult.compileStack;
-      } else {                                        //仍然在执行mounted任务
+      } else {                        //仍然在执行mounted任务
         if (lineItem.startsWith('},[])')) {       //mounted结束，批量插入
-          mountedContainer = 'onMounted(() => {\n' + mountedContainer + '})\n';
+          mountedContainer = '\nonMounted(() => {\n' + mountedContainer + '})\n';
           vueScriptList.push(mountedContainer);
           vueScriptList.push(unMountedContainer);
           mountedContainer = "";
@@ -67,28 +73,37 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
           if (!reactFileHasStateType.includes(3)) {
             reactFileHasStateType.push(3);
           }
+        } else if (lineItem.startsWith('},[')) {      //编译成watch函数，批量插入
+          const params = lineItem.split('[')[1].split(']')[0].split(',');
+          vueScriptList.push(formatWatchToVue(params, mountedContainer));
+          if (!reactFileHasStateType.includes(4)) {
+            reactFileHasStateType.push(4);
+          }
+          compileStack.shift();
         } else {
           mountedContainer += saveCodeResult;
         }
       }
     }
     else if (compileStack.peek() === 3) {             //模板编译中
-      if (lineItem === ')') {                 //模板输出结束
-        // compileStack
+      lineItem = lineItem.replace('className', 'class')
+      if (lineItem.includes(')') && lineItem.replace(/\s*/g, "") === ')') {                 //模板输出结束
         compileStack.shift();
       }
-      if (lineItem.includes('{') && lineItem.includes('}')) {        //带状态的模板
+      else if (lineItem.includes('{') && lineItem.includes('}')) {        //带状态的模板
         vueTemplateList.push(formatStateInTemplate(lineItem));
       } else {
         vueTemplateList.push(lineItem);
       }
     }
     else if (compileStack.peek() === 4) {         //复杂状态编译中
-      stateContainer += `${lineItem}\n`;
-      if (lineItem.includes(')')) {
+      if (lineItem.includes(')')) {         // 编译结束
+        stateContainer += `\n${lineItem}`;
         vueScriptList.push(stateContainer);
         stateContainer = '';
         compileStack.shift();
+      } else {
+        stateContainer += `${lineItem}`;
       }
     }
     else if (compileStack.peek() === 5) {           //unmounted函数编译中
@@ -97,7 +112,6 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         const endIconNum = unMountedContainer.split('}').filter(item => item === '').length;
         if (startIconNum === endIconNum) {         //执行unmounted
           compileStack.shift();
-          console.log(compileStack)
           unMountedContainer = 'onUnmounted(() => {\n' + unMountedContainer + '})\n';
           if (!reactFileHasStateType.includes(5)) {
             reactFileHasStateType.push(5);
@@ -126,13 +140,16 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
     if (reactFileHasStateType.includes(3)) {
       importVal += ',onMounted';
     }
+    if (reactFileHasStateType.includes(4)) {
+      importVal += ',watch';
+    }
     if (reactFileHasStateType.includes(5)) {
       importVal += ',onUnmounted';
     }
     vueScriptList.splice(1, 0, `import{${importVal}}from'vue'`);
   }
 
-  resultFileTotalLine += 4 + vueTemplateList.length + vueScriptList.length;
+  resultFileTotalLine = computeFileLines(vueTemplateList, vueScriptList);
 
   let resultFile = '';
   vueTemplateList.forEach(line => {
@@ -148,11 +165,11 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         resultFile += line + '\n';
       })
       resultFile += '</style>';
-      resultFileTotalLine += res.length + 1;
+      resultFileTotalLine += res.length + 3;
       //保存文件
       fs.writeFile(transformOptions.outputPath, resultFile, (err) => {
         if (!err) {
-          console.log('转换完成，vue文件共有', resultFileTotalLine - 1, '行代码!');
+          console.log('转换完成，vue文件共有', resultFileTotalLine, '行代码!');
           return
         }
       })

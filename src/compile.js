@@ -26,8 +26,7 @@ const saveCodeInUseEffect = (allStateList, lineItem, compileStack) => {         
   })
   return `${lineItem}\n`;
 }
-const saveCodeInUnmounted = (allStateList, lineItem, compileStack) => {
-  console.log('unmounted')
+const saveCodeInUnmounted = (allStateList, lineItem, compileStack) => {       //在unmounted中保存代码片段
   allStateList.forEach((stateType, key) => {
     if (lineItem.includes(key.stateAction)) {       //携带状态的特殊副作用函数语句
       const newState = lineItem.match(/\((.+?)\)/gi)[0].replace(/[(|)]/g, "");
@@ -36,6 +35,13 @@ const saveCodeInUnmounted = (allStateList, lineItem, compileStack) => {
   })
 
   return `${lineItem}\n`;
+}
+const formatWatchToVue = (params, code) => {
+  const returnCode = `watch([${params}],(${new Array(params.length).fill('').map((item, index) => {
+    return `[${'oldValue' + index}, ${'newValue' + index}]`
+  }
+  )})=>{\n${code}})`;
+  return returnCode;
 }
 
 const saveState = (lineItem, allStateList, compileStack, reactFileHasStateType) => {           //保存状态
@@ -77,5 +83,6 @@ module.exports = {
   formatStateInTemplate,
   saveCodeInUseEffect,
   saveCodeInUnmounted,
+  formatWatchToVue,
   saveState
 }
