@@ -2,6 +2,7 @@
   <div>
     {{ name }}
   </div>
+  )
 </template>
 
 <script setup>

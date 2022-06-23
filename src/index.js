@@ -19,7 +19,7 @@ const vueScriptList = [];                 //vue script内容
 let fsContent = [];                       //react源文件
 let compileStack = new Stack();              //以栈顶值作为优先级最高的编译任务调度，1 -> 常规编译 ，2 -> 副作用函数编译中， 3 -> 模板编译中， 4 -> 引用数据类型状态编译中， 5 -> 组件销毁生命周期
 compileStack.unshift(1);
-let reactFileHasStateType = [];         //1为基本数据类型ref，2为引用数据类型reactive，3为mounted，4为unmounted
+let reactFileHasStateType = [];         //1为基本数据类型ref，2为引用数据类型reactive，3为mounted，5为unmounted
 let allStateList = new Map();                  //所有状态的列表
 let resultFileTotalLine = 0;              //结果文件总行数
 let mountedContainer = "";              //mounted临时容器
@@ -30,17 +30,26 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
   fsContent = res;
   fsContent = fsContent.filter(line => line !== "");
   fsContent.forEach(lineItem => {
-
     lineItem = lineItem.replace(/\s*/g, "");
-    if (lineItem === ')') {                 //模板输出结束
-      // compileStack
-      compileStack.shift();
-    }
-    else if (compileStack.peek() === 3) {             //模板编译中
-      if (lineItem.includes('{') && lineItem.includes('}')) {        //带状态的模板
-        vueTemplateList.push(formatStateInTemplate(lineItem));
-      } else {
-        vueTemplateList.push(lineItem);
+
+    if (compileStack.peek() === 1) {               //常规编译，捕捉当前行是否为特殊编译
+      if (lineItem === 'return(') {        //开始输出模板
+        compileStack.unshift(3);
+      }
+      else if (lineItem.startsWith('const[') && lineItem.includes('useState')) {      //如果是状态声明
+        const {
+          returnCodeLine,
+          returnAllStateList,
+          returnCompileStack,
+          returnReactFileHasStateType
+        } = saveState(lineItem, allStateList, compileStack, reactFileHasStateType);
+        vueScriptList.push(returnCodeLine);
+        allStateList = returnAllStateList;
+        compileStack = returnCompileStack;
+        reactFileHasStateType = returnReactFileHasStateType;
+      }
+      else if (lineItem.startsWith('useEffect')) {             //副作用函数
+        compileStack.unshift(2);
       }
     }
     else if (compileStack.peek() === 2) {          //副作用函数编译中
@@ -63,6 +72,25 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         }
       }
     }
+    else if (compileStack.peek() === 3) {             //模板编译中
+      if (lineItem === ')') {                 //模板输出结束
+        // compileStack
+        compileStack.shift();
+      }
+      if (lineItem.includes('{') && lineItem.includes('}')) {        //带状态的模板
+        vueTemplateList.push(formatStateInTemplate(lineItem));
+      } else {
+        vueTemplateList.push(lineItem);
+      }
+    }
+    else if (compileStack.peek() === 4) {         //复杂状态编译中
+      stateContainer += `${lineItem}\n`;
+      if (lineItem.includes(')')) {
+        vueScriptList.push(stateContainer);
+        stateContainer = '';
+        compileStack.shift();
+      }
+    }
     else if (compileStack.peek() === 5) {           //unmounted函数编译中
       if (lineItem.startsWith('}')) {         //可能unmounted结束了，需要先判断是否是块作用域
         const startIconNum = unMountedContainer.split('{').filter(item => item === '').length;
@@ -78,33 +106,6 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
       } else {
         unMountedContainer += saveCodeInUnmounted(allStateList, lineItem, compileStack)
       }
-      console.log('wuwuwu', mountedContainer)
-    }
-    else if (lineItem === 'return(') {        //开始输出模板
-      compileStack.unshift(3);
-    }
-    else if (lineItem.startsWith('const[') && lineItem.includes('useState')) {      //如果是状态声明
-      const {
-        returnCodeLine,
-        returnAllStateList,
-        returnCompileStack,
-        returnReactFileHasStateType
-      } = saveState(lineItem, allStateList, compileStack, reactFileHasStateType);
-      vueScriptList.push(returnCodeLine);
-      allStateList = returnAllStateList;
-      compileStack = returnCompileStack;
-      reactFileHasStateType = returnReactFileHasStateType;
-    }
-    else if (compileStack.peek() === 4) {         //复杂状态在多行拼接
-      stateContainer += `${lineItem}\n`;
-      if (lineItem.includes(')')) {
-        vueScriptList.push(stateContainer);
-        stateContainer = '';
-        compileStack.shift();
-      }
-    }
-    else if (lineItem.startsWith('useEffect')) {             //副作用函数
-      compileStack.unshift(2);
     }
   })
 
