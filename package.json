@@ -1,0 +1,23 @@
+{
+  "name": "react-to-vue",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "react": "^18.2.0",
+    "vue": "^3.2.37"
+  },
+  "devDependencies": {
+    "babel-eslint": "^10.1.0",
+    "babel-traverse": "^6.26.0",
+    "babylon": "^6.18.0",
+    "flow-remove-types": "^2.180.1",
+    "prettier-eslint": "^15.0.1"
+  }
+}
