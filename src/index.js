@@ -3,18 +3,20 @@ const path = require('path');
 const { readFileFromLine } = require('./write');
 const { Stack } = require('./stack');
 const { computeFileLines } = require('./_utils/computeFileLines')
+const { formatMethodInDom } = require('./_utils/formatMethodInDom');
 
 const { formatStateInTemplate, saveCodeInUseEffect, saveCodeInUnmounted, formatWatchToVue, saveState, compileJsxTemplate } = require('./compile');
 
 const transformOptions = {
   sourcePath: path.resolve(__dirname, 'sourceFile', 'index.jsx'),
   outputPath: path.resolve(__dirname, 'outputFile', 'index.vue'),
-  styleType: 'less'
+  styleType: 'less',
+  componentName: 'Index'
 }
 const vueTemplateList = [];               //vue模板内容
 const vueScriptList = [];                 //vue script内容
 let fsContent = [];                       //react源文件
-let compileStack = new Stack();              //以栈顶值作为优先级最高的编译任务调度，1 -> 常规编译 ，2 -> 副作用函数编译中， 3 -> 模板编译中， 4 -> 引用数据类型状态编译中， 5 -> 组件销毁生命周期， 6 -> 模板中jsx语法编译中
+let compileStack = new Stack();              //以栈顶值作为优先级最高的编译任务调度，1 -> 常规编译 ，2 -> 副作用函数编译中， 3 -> 模板编译中， 4 -> 引用数据类型状态编译中， 5 -> 组件销毁生命周期， 6 -> 模板中jsx语法编译中， 7 -> 编译method中
 compileStack.unshift(1);
 let reactFileHasStateType = [];         //1为基本数据类型ref，2为引用数据类型reactive，3为mounted，4为watch，5为unmounted
 let allStateList = new Map();                  //所有状态的列表
@@ -24,6 +26,9 @@ let unMountedContainer = "";            //unMounted临时容器
 let stateContainer = "";                  //复杂state临时容器
 let jsxContainer = "";                 //jsx模板临时容器
 let jsxCompileParams = {};          //jsx模板解析时的记录信息
+let functionParams = {};            //函数信息
+let functionContainer = "";         //函数内容临时容器
+let functionModuleNum = 0;          //函数中花括号呈对数，0表示{}成对
 
 readFileFromLine(transformOptions.sourcePath, (res) => {
   fsContent = res;
@@ -50,6 +55,17 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
       }
       else if (lineItem.startsWith('useEffect')) {             //副作用函数
         compileStack.unshift(2);
+      }
+      else if ((lineItem.startsWith('const') && lineItem.includes('=>')) || lineItem.includes('function')) {         //编译函数
+        compileStack.unshift(7);
+        if ((lineItem.startsWith('const') && lineItem.includes('=>'))) {       //解析出函数信息
+          functionParams.functionName = lineItem.split('const')[1].split('=')[0];
+          const params = lineItem.split('(')[1].split(')')[0];
+          functionParams.params = params;
+          if (functionParams.functionName === transformOptions.componentName) {
+            compileStack.shift();
+          }
+        }
       }
       else {
         //被舍弃的，跳过循环，不做编译，一些特殊react专属语法，如export default function Index()/import './index.module.less';
@@ -91,10 +107,10 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         compileStack.shift();
       }
       else if (lineItem.includes('{') && lineItem.includes('}')) {        //带状态的模板
-        vueTemplateList.push(formatStateInTemplate(lineItem));
+        vueTemplateList.push(formatMethodInDom(formatStateInTemplate(lineItem)));
       }
       else {
-        vueTemplateList.push(lineItem);
+        vueTemplateList.push(formatMethodInDom(formatStateInTemplate(lineItem)));
       }
     }
     else if (compileStack.peek() === 4) {         //复杂状态编译中
@@ -129,7 +145,6 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         if (!key) {           //遍历元素的key值为必填项，否则会影响渲染
           throw new Error('please setting the map dom key!');
         }
-        jsxContainer = jsxContainer.substr(0, jsxContainer.length - (jsxCompileParams.mapDomType.length + 6));
         vueTemplateList.push(`<${mapDomType} v-for='${mapFnParams} in ${mapArray}' ${key && ":key='" + key + "'"}>`);
         vueTemplateList.push(jsxContainer)
         vueTemplateList.push(`</${mapDomType}>`);
@@ -142,8 +157,32 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         const returnParams = compileJsxTemplate(lineItem, jsxCompileParams)
         jsxCompileParams = { ...returnParams.jsxCompileParams };
         if (returnParams.lineItem) {
+          //条件渲染
+          if (jsxCompileParams.showCondition && jsxCompileParams.showWay && jsxCompileParams.hasSetVif) {
+            returnParams.lineItem = returnParams.lineItem.split('');
+            const insertAttrabled = jsxCompileParams.hasSetVif === 'if' ? ` v-if='${jsxCompileParams.showCondition}'>` : ` v-else>`
+            returnParams.lineItem.splice(returnParams.lineItem.length - 1, 1, insertAttrabled);
+            returnParams.lineItem = returnParams.lineItem.join('');
+            jsxCompileParams.hasSetVif = '';
+          }
           jsxContainer += returnParams.lineItem + '\n';
         }
+      }
+    }
+    else if (compileStack.peek() === 7) {           //编译函数
+      if (lineItem === '}' && functionModuleNum === 0) {
+        compileStack.shift();
+        vueScriptList.push(`const ${functionParams.functionName} = (${functionParams.params}) => {\n${functionContainer}}`);
+        functionContainer = "";
+        functionParams = {};
+      } else {
+        if (lineItem.includes('{')) {
+          functionModuleNum -= 1;
+        }
+        if (lineItem.includes('}')) {
+          functionModuleNum += 1;
+        }
+        functionContainer += lineItem + '\n';
       }
     }
   })

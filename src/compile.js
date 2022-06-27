@@ -1,13 +1,21 @@
-const { formatUseStateAction } = require('./_utils/formatuseState')
+const { formatUseStateAction } = require('./_utils/formatuseState');
+const { formatMethodInDom } = require('./_utils/formatMethodInDom')
 
 const formatStateInTemplate = (lineItem) => {         //编译模板中的{{state}}
-  let startIndex = lineItem.indexOf('{');
-  let endIndex = lineItem.indexOf('}');
-  lineItem = lineItem.split('');
-  lineItem.splice(startIndex + 1, 0, '{');
-  lineItem.splice(endIndex + 2, 0, '}');
-  lineItem = lineItem.join('');
-  return lineItem;
+  let _andIndex;
+  let endTag = false;
+  for (let i = lineItem.length - 1; i >= 0; i--) {
+    if (lineItem[i] === '>' && endTag) {
+      _andIndex = i;
+      break;
+    }
+    if (lineItem[i] === '>') endTag = true;
+  }
+  let start = lineItem.substr(0, _andIndex);          //元素内的jsx{}替换为""
+  let end = lineItem.substr(_andIndex, lineItem.length);               //元素外的jsx{}替换为{{}}
+  start = start.replaceAll('{', '"').replaceAll('}', '"');
+  end = start.length === end.length ? '' : end.replace('{', '{{').replace('}', '}}');
+  return start + end;
 }
 
 const saveCodeInUseEffect = (allStateList, lineItem, compileStack) => {             //在useEffect中保存代码片段
@@ -79,6 +87,7 @@ const saveState = (lineItem, allStateList, compileStack, reactFileHasStateType) 
 
 const compileJsxTemplate = (lineItem, jsxCompileParams) => {              //jsx模板编译
   lineItem = lineItem.replaceAll(' ', '');
+  // console.log('999', lineItem)
   if (lineItem.includes('.map')) {           //遍历渲染
     jsxCompileParams.mapArray = lineItem.split('.map')[0];
     jsxCompileParams.mapFnParams = lineItem.split('.map(')[1].split('=>')[0];
@@ -92,23 +101,40 @@ const compileJsxTemplate = (lineItem, jsxCompileParams) => {              //jsx�
   } else if (lineItem.includes('<') && lineItem.includes('key')) {     //存储遍历key值
     jsxCompileParams.key = lineItem.split('={')[1].split('}')[0];
     jsxCompileParams.mapDomType = lineItem.split('key')[0].split('<')[1];
+    lineItem = lineItem.slice(0, jsxCompileParams.mapDomType.length + 1) + ' ' + lineItem.slice(jsxCompileParams.mapDomType.length + 1)
     return {
-      jsxCompileParams
+      jsxCompileParams,
+      lineItem: formatMethodInDom(formatStateInTemplate(lineItem))
     };
   } else if (lineItem === ')' || lineItem === '})') {                //jsx语法结束
     return {
       jsxCompileParams
     }
-  } else {                                    //在key容器下的内层遍历子模板，保存，通常在第三行开始
-    console.log('fanhuide', formatStateInTemplate(lineItem))
+  } else if (!lineItem.includes('<') || !lineItem.includes('>')) {        //jsx中非dom语法判断
+    if (lineItem.length <= 2) {              //为? : && || 这些条件语法
+      switch (lineItem) {
+        case '?': jsxCompileParams.showWay = 'three'; break;
+        case '&&': jsxCompileParams.showWay = 'and'; break;
+        case '||': jsxCompileParams.showWay = 'or'; break;
+      }
+      jsxCompileParams.hasSetVif = 'if';
+      if (lineItem === ':') {
+        jsxCompileParams.hasSetVif = 'else';
+      }
+
+    } else {                                //为判断条件
+      jsxCompileParams.showCondition = lineItem;
+    }
     return {
       jsxCompileParams,
-      lineItem: formatStateInTemplate(lineItem)
+    };
+  } else {                                    //在key容器下的内层遍历子模板，保存，通常在第三行开始
+    return {
+      jsxCompileParams,
+      lineItem: lineItem.includes('{') && lineItem.includes('}') ? formatMethodInDom(formatStateInTemplate(lineItem)) : formatMethodInDom(lineItem)
     };
   }
 }
-
-
 
 module.exports = {
   formatStateInTemplate,

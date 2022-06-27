@@ -38,15 +38,29 @@ const Index = () => {
     setJob(job === 'code' ? 'eat' : 'job');
   }, [name, newList])
 
+  const showName = (name, age) => {
+    if(name) {
+      console.log(name);
+    } else {
+      console.log('hello')
+    }
+  }
+
   return (
-    <div className="hello">
+    <div className="hello" onClick={showName} onChange={showName} onFocus={() => showName('gcy', 3533)} onBlur={() => showName('gcy', 3533)}>
       <span className="name">{name}123</span>
       {
         personalList.map((item, index) => {
           return (
+            item.age > 20
+            ?
+            <div key={index} onClick={showName('fx',1555)}>
+              <span onClick={showName('fx',1)}  onChange={() => showName('fx',2)} onBlur={() => showName('gcy', 333)}>{item.name}</span>
+            </div>
+            :
             <div key={index}>
               <span>{item.name}</span>
-              <b>{item.age}</b>
+              <b>1</b>
             </div>
           )
         })
