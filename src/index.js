@@ -133,6 +133,9 @@ readFileFromLine(transformOptions.sourcePath, (res) => {
         vueTemplateList.push(`<${mapDomType} v-for='${mapFnParams} in ${mapArray}' ${key && ":key='" + key + "'"}>`);
         vueTemplateList.push(jsxContainer)
         vueTemplateList.push(`</${mapDomType}>`);
+        //初始化，用于下一次任务6的处理
+        jsxContainer = "";
+        jsxCompileParams = {};
         //弹栈，将任务权交回给普通模板编译
         compileStack.shift();
       } else {          //每行代码编译完，更新编译参数集
