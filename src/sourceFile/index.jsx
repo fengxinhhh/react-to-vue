@@ -8,6 +8,24 @@ const Index = () => {
     hobby: '学习'
   });
   const [job, setJob] = useState('code');
+  const [personList, setPersonList] = useState([
+    {
+      name: 'fx',
+      age: 20,
+    },
+    {
+      name: 'mjw',
+      age: 45,
+    },
+    {
+      name: 'tc',
+      age: 22,
+    },
+    {
+      name: 'gcy',
+      age: 38,
+    },
+  ]);
 
   useEffect(() => {
     setName(name === "小明" ? "帅哥" : "丑男");
@@ -22,7 +40,17 @@ const Index = () => {
 
   return (
     <div className="hello">
-      <span className="name">{name}</span>
+      <span className="name">{name}123</span>
+      {
+        personalList.map((item, index) => {
+          return (
+            <div key={index}>
+              <span>{item.name}</span>
+              <b>{item.age}</b>
+            </div>
+          )
+        })
+      }
     </div>
   )
 }

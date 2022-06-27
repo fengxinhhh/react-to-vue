@@ -1,6 +1,10 @@
 <template>
   <div class="hello">
-    <span class="name">{{ name }}</span>
+    <span class="name">{{ name }}123</span>
+    <div v-for="(item, index) in personalList" :key="index">
+      <span>{{ item.name }}</span>
+      <b>{{ item.age }}</b>
+    </div>
   </div>
 </template>
 
@@ -12,6 +16,12 @@ const newList = reactive({
   hobby: "学习",
 })
 const job = ref("code")
+const personList = reactive([
+  { name: "fx", age: 20 },
+  { name: "mjw", age: 45 },
+  { name: "tc", age: 22 },
+  { name: "gcy", age: 38 },
+])
 
 onMounted(() => {
   name.value = name.value === "小明" ? "帅哥" : "丑男"

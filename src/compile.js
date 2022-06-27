@@ -77,6 +77,37 @@ const saveState = (lineItem, allStateList, compileStack, reactFileHasStateType) 
   }
 }
 
+const compileJsxTemplate = (lineItem, jsxCompileParams) => {              //jsx模板编译
+  lineItem = lineItem.replaceAll(' ', '');
+  if (lineItem.includes('.map')) {           //遍历渲染
+    jsxCompileParams.mapArray = lineItem.split('.map')[0];
+    jsxCompileParams.mapFnParams = lineItem.split('.map(')[1].split('=>')[0];
+    return {
+      jsxCompileParams
+    };
+  } else if (lineItem === 'return(') {
+    return {
+      jsxCompileParams
+    };
+  } else if (lineItem.includes('<') && lineItem.includes('key')) {     //存储遍历key值
+    jsxCompileParams.key = lineItem.split('={')[1].split('}')[0];
+    jsxCompileParams.mapDomType = lineItem.split('key')[0].split('<')[1];
+    return {
+      jsxCompileParams
+    };
+  } else if (lineItem === ')' || lineItem === '})') {                //jsx语法结束
+    return {
+      jsxCompileParams
+    }
+  } else {                                    //在key容器下的内层遍历子模板，保存，通常在第三行开始
+    console.log('fanhuide', formatStateInTemplate(lineItem))
+    return {
+      jsxCompileParams,
+      lineItem: formatStateInTemplate(lineItem)
+    };
+  }
+}
+
 
 
 module.exports = {
@@ -84,5 +115,6 @@ module.exports = {
   saveCodeInUseEffect,
   saveCodeInUnmounted,
   formatWatchToVue,
-  saveState
+  saveState,
+  compileJsxTemplate
 }
